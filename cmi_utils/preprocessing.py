@@ -12,7 +12,6 @@ def preprocess_timeseries(ts_df: pd.DataFrame) -> pd.DataFrame:
     ts_df["timestamp"] = ts_df["timestamp"].str[:-5]  # remove tzinfo
     ts_df["timestamp"] = pd.to_datetime(ts_df["timestamp"], format="ISO8601")
     ts_df["hour"] = ts_df["timestamp"].dt.hour.astype(np.uint8)
-    ts_df["weekday"] = ts_df["timestamp"].dt.weekday.astype(np.uint8)
     return ts_df
 
 
@@ -33,15 +32,12 @@ def single_series_1min_resampling(ts_df: pd.DataFrame) -> pd.DataFrame:
     ts_1min_df = ts_5sec_df.resample("1min").agg(
         step=("step", "min"),
         anglez_1min_mean=("anglez", "mean"),
-        anglez_1min_std=("anglez", "std"),
         enmo_1min_mean=("enmo", "mean"),
-        enmo_1min_std=("enmo", "std"),
     )
     ts_1min_df = ts_1min_df.dropna().reset_index()
     ts_1min_df["step"] = ts_1min_df["step"].astype(np.uint32)
     ts_1min_df["series_id"] = ts_5sec_df.series_id.iloc[0]
     ts_1min_df["hour"] = ts_1min_df["timestamp"].dt.hour.astype(np.uint8)
-    ts_1min_df["weekday"] = ts_1min_df["timestamp"].dt.weekday.astype(np.uint8)
     return ts_1min_df
 
 

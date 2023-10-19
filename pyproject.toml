@@ -1,0 +1,34 @@
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cmi_sleep_detect"
+description = "CMI sleep detection Kaggle competition"
+version = "0.0.0"
+readme = "README.md"
+requires-python = ">=3.7"
+authors = [
+    {name = "Martin Elingaard", email = "martin.elingaard@silo.ai"}
+]
+maintainers = [
+    {name = "Martin Elingaard", email = "martin.elingaard@silo.ai"}
+]
+classifiers = [
+    "Programming Language :: Python"
+]
+dynamic = ["dependencies", "optional-dependencies"]
+
+[tool.setuptools.dynamic]
+dependencies = {file = ["requirements.txt"]}
+
+[tool.setuptools.dynamic.optional-dependencies]
+dev = {file = ["dev-requirements.txt"]}
+
+[tool.black]
+line-length = 88
+
+[tool.pytest.ini_options]
+addopts = "--doctest-modules"
+log_cli = "1"
+log_cli_level = "INFO"

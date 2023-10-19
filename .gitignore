@@ -1,6 +1,7 @@
 # Custom paths
 data/
 catboost_info/
+dev_notebooks/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

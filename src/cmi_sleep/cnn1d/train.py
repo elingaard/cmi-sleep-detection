@@ -9,7 +9,7 @@ if __name__ == "__main__":
     datamodule = CMIDataModule(datapath, batch_size=128, sample_size=60 * 12)
     model = CMISleepDetectionCNN(in_chs=4, feat_chs=32, n_resnet_blocks=3)
 
-    model_ckpt_callback = ModelCheckpoint(save_top_k=1, monitor="val/acc")
+    model_ckpt_callback = ModelCheckpoint(save_top_k=1, monitor="val/acc", mode="max")
     early_stop_callback = EarlyStopping(monitor="val/acc", mode="max", patience=10)
     trainer = pl.Trainer(
         log_every_n_steps=1,

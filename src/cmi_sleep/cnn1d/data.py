@@ -2,35 +2,38 @@ from typing import Tuple
 
 import pandas as pd
 import numpy as np
-from sklearn.preprocessing import StandardScaler
 import torch
 from torch.utils.data import Dataset, DataLoader, random_split
 import lightning.pytorch as pl
 
 
-def time_prior_encoding(ts_df: pd.DataFrame):
-    """Use most common awake and onset time as a prior for encoding the timestamp to
-    a numerical value."""
-    awake_prior = dict(
-        zip(range(1440), np.sin(np.linspace(0, np.pi, 1440) + 0.208 * np.pi) ** 24)
-    )
-    onset_prior = dict(
-        zip(range(1440), np.sin(np.linspace(0, np.pi, 1440) + 0.555 * np.pi) ** 24)
-    )
-    ts_df["onset_prior"] = (
+def time_encoding(ts_df: pd.DataFrame):
+    """Use most common awake and onset times as a prior for encoding the timestamp to
+    a numerical value. Encoding is done at minute resolution"""
+    n_mins_day = 60 * 24
+    awake_prior_vals = np.sin(np.linspace(0, np.pi, n_mins_day) + 0.208 * np.pi) ** 24
+    awake_prior_dict = dict(zip(range(1440), awake_prior_vals))
+    onset_prior_vals = np.sin(np.linspace(0, np.pi, n_mins_day) + 0.555 * np.pi) ** 24
+    onset_prior_dict = dict(zip(range(1440), onset_prior_vals))
+    time_df = pd.DataFrame()
+    time_df["onset_prior"] = (
         (ts_df.timestamp.dt.hour * 60 + ts_df.timestamp.dt.minute)
-        .map(onset_prior)
+        .map(onset_prior_dict)
         .astype(np.float32)
     )
-    ts_df["awake_prior"] = (
+    time_df["awake_prior"] = (
         (ts_df.timestamp.dt.hour * 60 + ts_df.timestamp.dt.minute)
-        .map(awake_prior)
+        .map(awake_prior_dict)
         .astype(np.float32)
     )
-    return ts_df
+    return time_df
 
 
 class CMITimeSeriesSampler(Dataset):
+    """Dataset class for sampling time-series from the CMI Sleep Detection dataset. 
+    A random time-series of size 'sample_size' is sampled from the specified series
+    index"""
+
     def __init__(
         self, series_df, sample_size: int, feat_cols: list, target_col: str
     ) -> None:
@@ -78,11 +81,9 @@ class CMIDataModule(pl.LightningDataModule):
 
     def setup(self, stage: str):
         series_df = pd.read_parquet(self.datapath)
-        std_scaler = StandardScaler()
-        series_df[["anglez_1min_mean", "enmo_1min_mean"]] = std_scaler.fit_transform(
-            series_df[["anglez_1min_mean", "enmo_1min_mean"]]
-        )
-        series_df = time_prior_encoding(series_df)
+        series_df["anglez_1min_mean"] = series_df["anglez_1min_mean"] / 90.0
+        time_enc_df = time_encoding(series_df)
+        self.series_df = pd.concat([series_df, time_enc_df], axis=1)
 
         feat_cols = ["anglez_1min_mean", "enmo_1min_mean", "onset_prior", "awake_prior"]
         target_col = "asleep"

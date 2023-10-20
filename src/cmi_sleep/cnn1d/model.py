@@ -65,12 +65,18 @@ class ResNetBlock1D(nn.Module):
 class ClassificationHead(nn.Module):
     def __init__(self, in_chs, kernel_size) -> None:
         super().__init__()
-        self.cls_conv = nn.Conv1d(in_chs, 1, kernel_size=kernel_size, padding="same")
+        self.conv1 = nn.Conv1d(
+            in_chs, in_chs // 4, kernel_size=kernel_size, padding="same"
+        )
+        self.conv2 = nn.Conv1d(
+            in_chs // 4, 1, kernel_size=61, padding="same", dilation=2
+        )
 
     def forward(
         self, x: torch.FloatTensor
     ) -> Tuple[torch.FloatTensor, torch.FloatTensor]:
-        y_logits = self.cls_conv(x).squeeze()
+        x = self.conv1(x).squeeze()
+        y_logits = self.conv2(x).squeeze()
         y_proba = F.sigmoid(y_logits)
         return y_logits, y_proba
 
@@ -79,7 +85,7 @@ class EventDetectionCNN(nn.Module):
     def __init__(self, in_chs: int, feat_chs, n_resnet_blocks: int) -> None:
         super().__init__()
         resnet_feat_chs = feat_chs * 3
-        self.input_layer = FPN1D(in_chs, feat_chs, kernel_size=11)
+        self.input_layer = FPN1D(in_chs, feat_chs, kernel_size=31)
         self.resnet_blocks = nn.Sequential(
             *[ResNetBlock1D(resnet_feat_chs, kernel_size=11)] * n_resnet_blocks
         )
@@ -90,6 +96,12 @@ class EventDetectionCNN(nn.Module):
         x = self.resnet_blocks(x)
         y_logits, y_proba = self.cls_head(x)
         return y_logits, y_proba
+    
+    def predict_from_df(self, df, feat_cols):
+        with torch.no_grad():
+            x = torch.tensor(df[feat_cols].T.to_numpy()).float().unsqueeze(0)
+            _, y_proba = self.forward(x)
+        return y_proba.numpy()
 
 
 class CMISleepDetectionCNN(pl.LightningModule):

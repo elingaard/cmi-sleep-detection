@@ -11,7 +11,6 @@ def preprocess_timeseries(ts_df: pd.DataFrame) -> pd.DataFrame:
     data types"""
     ts_df["timestamp"] = ts_df["timestamp"].str[:-5]  # remove tzinfo
     ts_df["timestamp"] = pd.to_datetime(ts_df["timestamp"], format="ISO8601")
-    ts_df["hour"] = ts_df["timestamp"].dt.hour.astype(np.uint8)
     return ts_df
 
 
@@ -27,6 +26,7 @@ def preprocess_events(events_df: pd.DataFrame) -> pd.DataFrame:
 
 def single_series_1min_resampling(ts_df: pd.DataFrame) -> pd.DataFrame:
     """Resample a single raw time series (5sec) data to 1min intervals"""
+    sid = ts_df.series_id.iloc[0]
     ts_5sec_df = ts_df.copy()
     ts_5sec_df = ts_5sec_df.set_index("timestamp")
     ts_1min_df = ts_5sec_df.resample("1min").agg(
@@ -34,10 +34,16 @@ def single_series_1min_resampling(ts_df: pd.DataFrame) -> pd.DataFrame:
         anglez_1min_mean=("anglez", "mean"),
         enmo_1min_mean=("enmo", "mean"),
     )
-    ts_1min_df = ts_1min_df.dropna().reset_index()
-    ts_1min_df["step"] = ts_1min_df["step"].astype(np.uint32)
-    ts_1min_df["series_id"] = ts_5sec_df.series_id.iloc[0]
-    ts_1min_df["hour"] = ts_1min_df["timestamp"].dt.hour.astype(np.uint8)
+    contains_nan = ts_1min_df.isnull().values.any()
+    if contains_nan:
+        prev_len = len(ts_1min_df)
+        ts_1min_df = ts_1min_df.dropna()
+        new_len = len(ts_1min_df)
+        print(f"Dropped {prev_len - new_len} entries in {sid}")
+    ts_1min_df = ts_1min_df.reset_index()
+    ts_1min_df["series_id"] = sid
+    ts_1min_df["series_id"] = ts_1min_df["series_id"].astype("large_string[pyarrow]")
+    ts_1min_df["hour"] = ts_1min_df["timestamp"].dt.hour.astype("uint8[pyarrow]")
     return ts_1min_df
 
 
@@ -72,7 +78,7 @@ def create_asleep_column(ts_df: pd.DataFrame, events_df: pd.DataFrame) -> pd.Dat
         onset_1min_idx = step_list.index(onset_step)
         wake_1min_idx = step_list.index(wakeup_step)
         ts_df.loc[onset_1min_idx:wake_1min_idx, "asleep"] = 1
-    ts_df["asleep"] = ts_df["asleep"].astype(np.uint8)
+    ts_df["asleep"] = ts_df["asleep"].astype("uint8[pyarrow]")
     return ts_df
 
 
@@ -92,7 +98,9 @@ def event_minmax_prune_timeseries(
     return ts_df
 
 
-def remove_no_sleep_periods(ts_df: pd.DataFrame, min_hours: int = 24) -> pd.DataFrame:
+def remove_no_annotation_periods(
+    ts_df: pd.DataFrame, min_hours: int = 24
+) -> pd.DataFrame:
     """Remove any sequences in the time series where no sleep has been detected for
     'min_hours'. This most likely indicates that data was not annotated in this
      period."""
@@ -104,7 +112,7 @@ def remove_no_sleep_periods(ts_df: pd.DataFrame, min_hours: int = 24) -> pd.Data
 
 
 def add_asleep_target_to_timeseries_data(
-    series_df: pd.DataFrame, events_df: pd.DataFrame
+    series_df: pd.DataFrame, events_df: pd.DataFrame, remove_unannotated: bool = False
 ):
     """For each series in the data add a column which indicates whether the person is
     asleep or not. This is based on the onset and wakeup times in the events data."""
@@ -120,8 +128,8 @@ def add_asleep_target_to_timeseries_data(
         event_df = event_grps.get_group(series_id)
         ts_df = series_grps.get_group(series_id)
         ts_df = create_asleep_column(ts_df, event_df)
-        ts_df = event_minmax_prune_timeseries(ts_df, event_df, hour_buffer=3)
-        ts_df = remove_no_sleep_periods(ts_df)
+        if remove_unannotated:
+            ts_df = remove_no_annotation_periods(ts_df)
         ts_asleep_dataframes.append(ts_df)
     ts_asleep_df = pd.concat(ts_asleep_dataframes).reset_index(drop=True)
     return ts_asleep_df
